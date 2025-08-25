@@ -25,6 +25,7 @@ dist-ssr
 *.sw?
 
 # Claude-related files (Add your Claude-specific files here)
+.claude/
 claude-logs/
 claude-data/
 claude-config.json
