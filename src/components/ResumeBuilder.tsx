@@ -11,7 +11,6 @@ import { ResumePreview } from './ResumePreview';
 import { ThemeSelector, ResumeTheme } from './ThemeSelector';
 import { AIRecommendations } from './AIRecommendations';
 import { ExportOptions } from './ExportOptions';
-import { PreviewGuard } from './PreviewGuard';
 
 export interface ResumeData {
   personalInfo: {
@@ -70,7 +69,6 @@ export const ResumeBuilder: React.FC = () => {
   const [selectedTheme, setSelectedTheme] = useState<ResumeTheme | null>(null);
   const [currentStep, setCurrentStep] = useState<'theme' | 'form' | 'recommendations' | 'preview' | 'export'>('theme');
   const [selectedTemplate, setSelectedTemplate] = useState<'modern' | 'professional' | 'creative'>('modern');
-  const [isPreviewReady, setIsPreviewReady] = useState(false);
 
   const updatePersonalInfo = (field: keyof ResumeData['personalInfo'], value: string) => {
     setResumeData(prev => ({
@@ -266,20 +264,13 @@ export const ResumeBuilder: React.FC = () => {
               </div>
             </div>
             
-            {/* Right side: Export Options with Preview Guard */}
+            {/* Right side: Export Options (Direct Access) */}
             <div className="lg:col-span-1">
-              <PreviewGuard
-                onPreviewReady={() => setIsPreviewReady(true)}
-                onGoToPreview={() => setCurrentStep('preview')}
-                autoWait={true}
-                showPreviewButton={true}
-              >
-                <ExportOptions 
-                  onExport={handleExport} 
-                  resumeData={resumeData} 
-                  resumeElementId="resume-preview-element"
-                />
-              </PreviewGuard>
+              <ExportOptions 
+                onExport={handleExport} 
+                resumeData={resumeData} 
+                resumeElementId="resume-preview-element"
+              />
             </div>
           </div>
         </div>

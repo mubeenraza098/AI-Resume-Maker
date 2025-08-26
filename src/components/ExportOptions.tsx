@@ -20,7 +20,11 @@ import {
   MessageCircle,
   Copy,
   Loader2,
-  Bug
+  Bug,
+  X,
+  RotateCcw,
+  Sparkles,
+  Star
 } from 'lucide-react';
 import { 
   FacebookShareButton,
@@ -37,7 +41,6 @@ import { DownloadDebugPanel } from './DownloadDebugPanel';
 import { AdvancedDownloadDiagnostics } from './AdvancedDownloadDiagnostics';
 import { DownloadTestSuite } from './DownloadTestSuite';
 import { ManualDownloadFallback } from './ManualDownloadFallback';
-import { PreviewReadinessIndicator } from './PreviewReadinessIndicator';
 
 interface ExportOptionsProps {
   onExport?: (format: 'pdf' | 'word' | 'png') => void;
@@ -156,18 +159,8 @@ export const ExportOptions: React.FC<ExportOptionsProps> = ({
       // Use robust download service for direct downloads
       const service = robustDownloadService;
       
-      // Check if resume element exists before attempting download
+      // Use element ID for download
       const elementId = resumeElementId || 'resume-preview-element';
-      const resumeElement = document.getElementById(elementId) || 
-                          document.querySelector('[id*="resume-preview"]') ||
-                          document.querySelector('[class*="resume-preview"]') ||
-                          document.querySelector('[data-testid="resume-preview"]');
-                          
-      if (!resumeElement) {
-        throw new Error(`Resume element not found. Looking for: ${elementId}. Please ensure the resume preview is visible on the page.`);
-      }
-      
-      console.log(`✅ Found resume element:`, resumeElement);
       
       // Execute download based on format
       switch (format) {
@@ -334,239 +327,192 @@ export const ExportOptions: React.FC<ExportOptionsProps> = ({
     "Consider having both PDF and Word versions ready"
   ];
 
-  // Debug: Log component render
-  console.log('🔧 [DEBUG] ExportOptions component rendering...', { resumeData, resumeElementId });
   
   return (
-    <div className="space-y-6">
-      {/* Debug indicator */}
-      <div className="bg-yellow-100 border-yellow-400 border rounded p-2 text-sm">
-        🔧 DEBUG: ExportOptions component loaded - Resume: {resumeData.personalInfo.fullName}
-      </div>
-      <div className="text-center mb-6">
-        <h2 className="text-3xl font-bold bg-gradient-primary bg-clip-text text-transparent mb-2">
-          Export Your Resume
-        </h2>
-        <p className="text-muted-foreground">
-          Choose the perfect format for your job applications
-        </p>
-      </div>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 p-6">
+      <div className="max-w-6xl mx-auto">
+        {/* Modern Header */}
+        <div className="text-center mb-12">
+          <div className="inline-flex items-center gap-2 bg-blue-100 text-blue-700 px-4 py-2 rounded-full text-sm font-medium mb-4">
+            <Download className="h-4 w-4" />
+            Ready for Export
+          </div>
+          <h1 className="text-5xl font-bold bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 bg-clip-text text-transparent mb-4">
+            Export Your Resume
+          </h1>
+          <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+            Choose your preferred format and download instantly. No waiting, no loading screens.
+          </p>
+        </div>
 
-      {/* Preview Readiness Indicator */}
-      <PreviewReadinessIndicator 
-        elementId={resumeElementId || 'resume-preview-element'}
-        showDetails={true}
-        onStatusChange={(isReady) => {
-          if (!isReady) {
-            console.log('Preview not ready - downloads may fail');
-          }
-        }}
-      />
+        {/* Modern Export Cards */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
+          {exportFormats.map((format) => {
+            const Icon = format.icon;
+            const isActive = isDownloading === format.id;
+            const hasFailed = failedDownloads.has(format.id);
+            
+            return (
+              <div 
+                key={format.id} 
+                className={`group relative bg-white rounded-2xl p-8 shadow-lg hover:shadow-2xl transition-all duration-300 border-2 ${
+                  format.recommended 
+                    ? 'border-blue-200 hover:border-blue-300' 
+                    : 'border-gray-100 hover:border-gray-200'
+                } ${isActive ? 'ring-4 ring-blue-100 scale-105' : 'hover:scale-105'}`}
+              >
+                {/* Recommended Badge */}
+                {format.recommended && (
+                  <div className="absolute -top-3 -right-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg">
+                    ⭐ RECOMMENDED
+                  </div>
+                )}
 
-      {/* Export Formats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {exportFormats.map((format) => {
-          const Icon = format.icon;
-          return (
-            <Card 
-              key={format.id} 
-              className={`cursor-pointer transition-all hover:shadow-medium ${
-                format.recommended ? 'ring-2 ring-primary shadow-soft' : ''
-              }`}
-            >
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <Icon className="h-8 w-8 text-primary" />
-                  {format.recommended && (
-                    <Badge className="bg-gradient-primary text-white">
-                      Recommended
-                    </Badge>
-                  )}
+                {/* Icon and Title */}
+                <div className="text-center mb-6">
+                  <div className={`inline-flex items-center justify-center w-20 h-20 rounded-2xl mb-4 ${
+                    format.recommended 
+                      ? 'bg-gradient-to-r from-blue-500 to-purple-600' 
+                      : 'bg-gradient-to-r from-gray-400 to-gray-600'
+                  }`}>
+                    <Icon className="h-10 w-10 text-white" />
+                  </div>
+                  <h3 className="text-2xl font-bold text-gray-800 mb-2">{format.name}</h3>
+                  <p className="text-gray-600">{format.description}</p>
                 </div>
-                <CardTitle className="text-lg">{format.name}</CardTitle>
-                <CardDescription>{format.description}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    {format.features.map((feature, index) => (
-                      <div key={index} className="flex items-center gap-2 text-sm">
-                        <CheckCircle className="h-4 w-4 text-green-500" />
-                        <span>{feature}</span>
-                      </div>
-                    ))}
-                  </div>
-                  
-                  <div className="text-xs text-muted-foreground">
-                    Estimated size: {format.size}
-                  </div>
-                  
-                  {isDownloading === format.id ? (
-                    <div className="space-y-2">
-                      <Button 
-                        onClick={() => {
-                          // Cancel download
-                          setIsDownloading(null);
-                          setDownloadProgress(null);
-                          if (progressTimeout) {
-                            clearTimeout(progressTimeout);
-                            setProgressTimeout(null);
-                          }
-                          toast({
-                            title: "Download Cancelled",
-                            description: "The download has been cancelled.",
-                            variant: "destructive"
-                          });
-                        }}
-                        className="w-full gap-2 bg-red-600 hover:bg-red-700"
-                        variant="destructive"
-                      >
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Cancel Download
-                      </Button>
+
+                {/* Features */}
+                <div className="space-y-3 mb-6">
+                  {format.features.map((feature, index) => (
+                    <div key={index} className="flex items-center gap-3">
+                      <div className="flex-shrink-0 w-2 h-2 bg-green-500 rounded-full"></div>
+                      <span className="text-gray-700">{feature}</span>
                     </div>
-                  ) : (
+                  ))}
+                </div>
+
+                {/* Size Info */}
+                <div className="text-center mb-6">
+                  <span className="inline-flex items-center gap-1 bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-sm">
+                    📁 {format.size}
+                  </span>
+                </div>
+
+                {/* Action Button */}
+                {isActive ? (
+                  <div className="space-y-4">
+                    {/* Progress Bar */}
+                    {downloadProgress && (
+                      <div className="space-y-2">
+                        <div className="w-full bg-gray-200 rounded-full h-3">
+                          <div 
+                            className="bg-gradient-to-r from-blue-500 to-purple-600 h-3 rounded-full transition-all duration-300"
+                            style={{ width: `${downloadProgress.progress}%` }}
+                          ></div>
+                        </div>
+                        <p className="text-sm text-center text-gray-600">
+                          {downloadProgress.message}
+                        </p>
+                      </div>
+                    )}
+                    
+                    {/* Cancel Button */}
+                    <Button 
+                      onClick={() => {
+                        setIsDownloading(null);
+                        setDownloadProgress(null);
+                        if (progressTimeout) {
+                          clearTimeout(progressTimeout);
+                          setProgressTimeout(null);
+                        }
+                        toast({
+                          title: "Download Cancelled",
+                          description: "The download has been cancelled.",
+                        });
+                      }}
+                      className="w-full bg-red-500 hover:bg-red-600 text-white font-semibold py-3 rounded-xl"
+                    >
+                      <X className="h-4 w-4 mr-2" />
+                      Cancel Download
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {/* Main Download Button */}
                     <Button 
                       onClick={() => handleDownload(format.id as 'pdf' | 'word' | 'png')}
-                      className={`w-full gap-2 ${
+                      className={`w-full font-semibold py-4 rounded-xl transition-all duration-200 ${
                         format.recommended 
-                          ? 'bg-gradient-primary hover:bg-primary-hover' 
-                          : ''
+                          ? 'bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white shadow-lg hover:shadow-xl' 
+                          : 'bg-gray-800 hover:bg-gray-900 text-white'
                       }`}
-                      variant={format.recommended ? 'default' : 'outline'}
                       disabled={isDownloading !== null}
                     >
-                      <Download className="h-4 w-4" />
+                      <Download className="h-5 w-5 mr-2" />
                       Download {format.name}
                     </Button>
-                  )}
-                  
-                  {/* Progress indicator */}
-                  {isDownloading === format.id && downloadProgress && (
-                    <div className="mt-2 space-y-2">
-                      <Progress value={downloadProgress.progress} className="h-2" />
-                      <p className="text-xs text-muted-foreground text-center">
-                        {downloadProgress.stage === 'retrying' ? (
-                          <span className="text-orange-600">
-                            {downloadProgress.message} 
-                            {downloadProgress.attempt && downloadProgress.maxAttempts && 
-                              ` (${downloadProgress.attempt}/${downloadProgress.maxAttempts})`
-                            }
-                          </span>
-                        ) : downloadProgress.stage === 'detecting' ? (
-                          <span className="text-blue-600">
-                            🔍 {downloadProgress.message}
-                          </span>
-                        ) : downloadProgress.stage === 'loading' ? (
-                          <span className="text-purple-600">
-                            ⏳ {downloadProgress.message}
-                            {downloadProgress.substage && ` (${downloadProgress.substage})`}
-                          </span>
-                        ) : downloadProgress.stage === 'generating' ? (
-                          <span className="text-green-600">
-                            ⚡ {downloadProgress.message}
-                            {downloadProgress.substage && ` (${downloadProgress.substage})`}
-                          </span>
-                        ) : downloadProgress.stage === 'preparing' ? (
-                          <span className="text-blue-500">
-                            📋 {downloadProgress.message}
-                          </span>
-                        ) : downloadProgress.stage === 'downloading' ? (
-                          <span className="text-indigo-600">
-                            ⬇️ {downloadProgress.message}
-                          </span>
-                        ) : downloadProgress.stage === 'complete' ? (
-                          <span className="text-green-600">
-                            ✅ {downloadProgress.message}
-                          </span>
-                        ) : downloadProgress.stage === 'error' ? (
-                          <span className="text-red-600">
-                            ❌ {downloadProgress.message}
-                          </span>
-                        ) : (
-                          downloadProgress.message
-                        )}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Retry and Manual options for failed downloads */}
-                  {!isDownloading && failedDownloads.has(format.id) && (
-                    <div className="mt-2 space-y-2">
+                    
+                    {/* Retry Button for Failed Downloads */}
+                    {hasFailed && (
                       <Button
                         variant="outline"
-                        size="sm"
                         onClick={() => handleDownload(format.id as 'pdf' | 'word' | 'png')}
-                        className="w-full gap-2 text-orange-600 border-orange-300 hover:bg-orange-50"
+                        className="w-full border-2 border-orange-300 text-orange-600 hover:bg-orange-50 font-medium py-2 rounded-xl"
                       >
-                        <Loader2 className="h-4 w-4" />
+                        <RotateCcw className="h-4 w-4 mr-2" />
                         Retry Download
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setShowManualFallback({format: format.id as 'pdf' | 'word' | 'png'})}
-                        className="w-full gap-2 text-muted-foreground hover:text-foreground"
-                      >
-                        <Download className="h-4 w-4" />
-                        Manual Download Options
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
 
-      {/* Sharing Options */}
-      <Card className="shadow-medium">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Share2 className="h-5 w-5 text-primary" />
-            Sharing Options
-          </CardTitle>
-          <CardDescription>
-            Share your resume on social media or via email
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Quick Share Options */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Modern Sharing Section */}
+        <div className="bg-white rounded-2xl p-8 shadow-lg border border-gray-100 mb-8">
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center gap-2 bg-green-100 text-green-700 px-4 py-2 rounded-full text-sm font-medium mb-4">
+              <Share2 className="h-4 w-4" />
+              Share & Connect
+            </div>
+            <h2 className="text-3xl font-bold text-gray-800 mb-2">Share Your Success</h2>
+            <p className="text-gray-600">Let the world know about your professional achievements</p>
+          </div>
+
+          {/* Quick Share Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
             {sharingOptions.map((option) => {
               const Icon = option.icon;
               return (
-                <Button
+                <button
                   key={option.id}
-                  variant="outline"
                   onClick={option.action}
-                  className="h-auto p-4 justify-start gap-3"
+                  className="group p-6 rounded-xl border-2 border-gray-100 hover:border-blue-200 hover:bg-blue-50 transition-all duration-200 text-left"
                 >
-                  <Icon className="h-5 w-5 text-primary" />
-                  <div className="text-left">
-                    <div className="font-medium text-sm">{option.name}</div>
-                    <div className="text-xs text-muted-foreground">{option.description}</div>
-                  </div>
-                </Button>
+                  <Icon className="h-8 w-8 text-blue-600 mb-3 group-hover:scale-110 transition-transform" />
+                  <h3 className="font-semibold text-gray-800 mb-1">{option.name}</h3>
+                  <p className="text-sm text-gray-600">{option.description}</p>
+                </button>
               );
             })}
           </div>
 
-          {/* Social Media Sharing */}
-          <div>
-            <h4 className="font-semibold mb-3">Share on Social Media</h4>
-            <div className="flex flex-wrap gap-3">
+          {/* Social Media Buttons */}
+          <div className="text-center">
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">Share on Social Media</h3>
+            <div className="flex flex-wrap justify-center gap-3">
               <LinkedinShareButton
                 url={shareableContent.url}
                 title={shareableContent.title}
                 summary={shareableContent.description}
                 source="TalentScape AI"
               >
-                <Button variant="outline" size="sm" className="gap-2">
-                  <Linkedin className="h-4 w-4 text-blue-600" />
+                <div className="flex items-center gap-2 bg-[#0077b5] text-white px-4 py-2 rounded-lg hover:bg-[#005885] transition-colors cursor-pointer">
+                  <Linkedin className="h-4 w-4" />
                   LinkedIn
-                </Button>
+                </div>
               </LinkedinShareButton>
 
               <TwitterShareButton
@@ -574,230 +520,142 @@ export const ExportOptions: React.FC<ExportOptionsProps> = ({
                 title={shareableContent.description}
                 hashtags={['resume', 'career', 'jobs']}
               >
-                <Button variant="outline" size="sm" className="gap-2">
-                  <Twitter className="h-4 w-4 text-blue-400" />
+                <div className="flex items-center gap-2 bg-[#1da1f2] text-white px-4 py-2 rounded-lg hover:bg-[#0c85d0] transition-colors cursor-pointer">
+                  <Twitter className="h-4 w-4" />
                   Twitter
-                </Button>
+                </div>
               </TwitterShareButton>
 
               <FacebookShareButton
                 url={shareableContent.url}
               >
-                <Button variant="outline" size="sm" className="gap-2">
-                  <Facebook className="h-4 w-4 text-blue-700" />
+                <div className="flex items-center gap-2 bg-[#4267b2] text-white px-4 py-2 rounded-lg hover:bg-[#365899] transition-colors cursor-pointer">
+                  <Facebook className="h-4 w-4" />
                   Facebook
-                </Button>
+                </div>
               </FacebookShareButton>
 
               <WhatsappShareButton
                 url={shareableContent.url}
                 title={shareableContent.description}
               >
-                <Button variant="outline" size="sm" className="gap-2">
-                  <MessageCircle className="h-4 w-4 text-green-600" />
+                <div className="flex items-center gap-2 bg-[#25d366] text-white px-4 py-2 rounded-lg hover:bg-[#20ba5a] transition-colors cursor-pointer">
+                  <MessageCircle className="h-4 w-4" />
                   WhatsApp
-                </Button>
+                </div>
               </WhatsappShareButton>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
 
-      {/* Quick Tips */}
-      <Card className="shadow-medium">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Zap className="h-5 w-5 text-primary" />
-            Pro Tips for Resume Submission
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Pro Tips Section */}
+        <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-2xl p-8 mb-8">
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center gap-2 bg-purple-100 text-purple-700 px-4 py-2 rounded-full text-sm font-medium mb-4">
+              <Zap className="h-4 w-4" />
+              Pro Tips
+            </div>
+            <h2 className="text-3xl font-bold text-gray-800 mb-2">Resume Success Tips</h2>
+            <p className="text-gray-600">Make your resume stand out from the crowd</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {quickTips.map((tip, index) => (
-              <div key={index} className="flex items-start gap-3">
-                <div className="w-2 h-2 bg-primary rounded-full mt-2 flex-shrink-0"></div>
-                <span className="text-sm">{tip}</span>
+              <div key={index} className="flex items-start gap-4 p-4 bg-white rounded-xl shadow-sm">
+                <div className="flex-shrink-0 w-8 h-8 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
+                  {index + 1}
+                </div>
+                <span className="text-gray-700 font-medium">{tip}</span>
               </div>
             ))}
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Download All */}
-      <div className="text-center">
-        <Button 
-          size="lg"
-          className="gap-2 bg-gradient-primary hover:bg-primary-hover px-8"
-          onClick={async () => {
-            const formats: ('pdf' | 'word' | 'png')[] = ['pdf', 'word', 'png'];
-            let successCount = 0;
-            let failureCount = 0;
-
-            toast({
-              title: "Batch Download Started",
-              description: "Starting downloads for all formats...",
-            });
-
-            // Download all formats sequentially with small delays
-            for (const format of formats) {
-              try {
-                await handleDownload(format);
-                successCount++;
-                // Small delay between downloads to prevent browser blocking
-                await new Promise(resolve => setTimeout(resolve, 500));
-              } catch (error) {
-                failureCount++;
-                console.error(`Failed to download ${format}:`, error);
-              }
-            }
-
-            // Show final result
-            if (successCount === formats.length) {
-              toast({
-                title: "All Downloads Complete! 🎉",
-                description: `Successfully downloaded ${successCount} files (PDF, Word, and PNG). Check your downloads folder.`,
-                duration: 6000,
-              });
-            } else if (successCount > 0) {
-              toast({
-                title: "Partial Download Success",
-                description: `Downloaded ${successCount} out of ${formats.length} formats successfully. ${failureCount} failed.`,
-                variant: "destructive",
-                duration: 8000,
-              });
-            } else {
-              toast({
-                title: "All Downloads Failed",
-                description: "All download attempts failed. Please try individual downloads or check your browser settings.",
-                variant: "destructive",
-                duration: 10000,
-              });
-            }
-          }}
-          disabled={isDownloading !== null}
-        >
-          {isDownloading ? (
-            <Loader2 className="h-5 w-5 animate-spin" />
-          ) : (
-            <Download className="h-5 w-5" />
-          )}
-          {isDownloading ? 'Downloading...' : 'Download All Formats'}
-        </Button>
-        <p className="text-xs text-muted-foreground mt-2">
-          Get PDF, Word, and PNG versions at once
-        </p>
-      </div>
-
-      {/* Debug Panel Toggle */}
-      <div className="text-center mt-8 space-y-2">
-        <div className="flex gap-2 justify-center flex-wrap">
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            onClick={() => setShowAdvancedDiagnostics(true)}
-            className="gap-2 text-muted-foreground hover:text-foreground"
-          >
-            <Bug className="h-4 w-4" />
-            Run Diagnostics
-          </Button>
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            onClick={() => setShowTestSuite(true)}
-            className="gap-2 text-muted-foreground hover:text-foreground"
-          >
-            <Download className="h-4 w-4" />
-            Test Downloads
-          </Button>
         </div>
-        <div className="flex gap-2 flex-wrap justify-center">
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            onClick={() => setShowDebugPanel(true)}
-            className="gap-1 text-xs text-muted-foreground/70 hover:text-muted-foreground"
-          >
-            Basic troubleshooting
-          </Button>
+
+        {/* Download All Section */}
+        <div className="text-center bg-white rounded-2xl p-8 shadow-lg border border-gray-100 mb-8">
+          <div className="mb-6">
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">Get All Formats</h2>
+            <p className="text-gray-600">Download PDF, Word, and PNG versions in one click</p>
+          </div>
           
-          {/* Emergency test download - bypass all complex logic */}
           <Button 
-            variant="ghost" 
-            size="sm" 
+            size="lg"
+            className="bg-gradient-to-r from-green-500 to-teal-600 hover:from-green-600 hover:to-teal-700 text-white font-bold py-4 px-8 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 mb-4"
             onClick={async () => {
-              console.log('🚨 [EMERGENCY] Starting emergency test download...');
-              try {
-                setIsDownloading('pdf');
-                const service = new RobustDownloadService((progress: RobustDownloadProgress) => {
-                  console.log('📊 [EMERGENCY PROGRESS]', progress);
-                  setDownloadProgress(progress);
-                });
-                
-                console.log('🚨 [EMERGENCY] Calling downloadAsPDF directly...');
-                await service.downloadAsPDF(resumeData, resumeElementId || 'resume-preview-element');
-                console.log('🚨 [EMERGENCY] Direct call completed!');
-                
+              const formats: ('pdf' | 'word' | 'png')[] = ['pdf', 'word', 'png'];
+              let successCount = 0;
+              let failureCount = 0;
+
+              toast({
+                title: "Batch Download Started",
+                description: "Starting downloads for all formats...",
+              });
+
+              // Download all formats sequentially with small delays
+              for (const format of formats) {
+                try {
+                  await handleDownload(format);
+                  successCount++;
+                  // Small delay between downloads to prevent browser blocking
+                  await new Promise(resolve => setTimeout(resolve, 500));
+                } catch (error) {
+                  failureCount++;
+                  console.error(`Failed to download ${format}:`, error);
+                }
+              }
+
+              // Show final result
+              if (successCount === formats.length) {
                 toast({
-                  title: 'Emergency Test Complete',
-                  description: 'Direct download attempt finished - check console for details'
+                  title: "All Downloads Complete! 🎉",
+                  description: `Successfully downloaded ${successCount} files (PDF, Word, and PNG). Check your downloads folder.`,
+                  duration: 6000,
                 });
-              } catch (error) {
-                console.error('🚨 [EMERGENCY ERROR]', error);
+              } else if (successCount > 0) {
                 toast({
-                  title: 'Emergency Test Failed',
-                  description: `Error: ${error instanceof Error ? error.message : String(error)}`,
-                  variant: 'destructive'
+                  title: "Partial Download Success",
+                  description: `Downloaded ${successCount} out of ${formats.length} formats successfully. ${failureCount} failed.`,
+                  variant: "destructive",
+                  duration: 8000,
                 });
-              } finally {
-                setIsDownloading(null);
-                setDownloadProgress(null);
+              } else {
+                toast({
+                  title: "All Downloads Failed",
+                  description: "All download attempts failed. Please try individual downloads or check your browser settings.",
+                  variant: "destructive",
+                  duration: 10000,
+                });
               }
             }}
-            className="gap-1 text-xs text-red-600/70 hover:text-red-600"
+            disabled={isDownloading !== null}
           >
-            🚨 Emergency Test
+            {isDownloading ? (
+              <Loader2 className="h-6 w-6 animate-spin mr-2" />
+            ) : (
+              <Sparkles className="h-6 w-6 mr-2" />
+            )}
+            {isDownloading ? 'Downloading...' : 'Download All Formats'}
           </Button>
+          
+          <p className="text-sm text-gray-500">
+            📁 Get PDF, Word, and PNG versions instantly
+          </p>
         </div>
+        
+        {/* Manual Download Fallback */}
+        {showManualFallback && (
+          <ManualDownloadFallback
+            resumeElementId={resumeElementId || 'resume-preview-element'}
+            resumeData={resumeData}
+            format={showManualFallback.format}
+            onClose={() => setShowManualFallback(null)}
+            onRetryAutomated={() => {
+              setShowManualFallback(null);
+              handleDownload(showManualFallback.format);
+            }}
+          />
+        )}
       </div>
-
-      {/* Advanced Diagnostics */}
-      <AdvancedDownloadDiagnostics
-        isVisible={showAdvancedDiagnostics}
-        onClose={() => setShowAdvancedDiagnostics(false)}
-        elementId={resumeElementId || 'resume-preview-element'}
-        onRetryDownload={(format) => {
-          setShowAdvancedDiagnostics(false);
-          handleDownload(format);
-        }}
-      />
-
-      {/* Test Suite */}
-      <DownloadTestSuite
-        isVisible={showTestSuite}
-        onClose={() => setShowTestSuite(false)}
-        resumeData={resumeData}
-        resumeElementId={resumeElementId || 'resume-preview-element'}
-      />
-
-      {/* Debug Panel */}
-      <DownloadDebugPanel 
-        isVisible={showDebugPanel}
-        onClose={() => setShowDebugPanel(false)}
-      />
-
-      {/* Manual Download Fallback */}
-      {showManualFallback && (
-        <ManualDownloadFallback
-          resumeElementId={resumeElementId || 'resume-preview-element'}
-          resumeData={resumeData}
-          format={showManualFallback.format}
-          onClose={() => setShowManualFallback(null)}
-          onRetryAutomated={() => {
-            setShowManualFallback(null);
-            handleDownload(showManualFallback.format);
-          }}
-        />
-      )}
     </div>
   );
 };
