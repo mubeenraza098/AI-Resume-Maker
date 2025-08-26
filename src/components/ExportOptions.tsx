@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -28,16 +28,20 @@ import {
   LinkedinShareButton,
   WhatsappShareButton
 } from 'react-share';
-import { DownloadService, DownloadProgress } from '@/lib/downloadService';
-import { ImprovedDownloadService } from '@/lib/improvedDownloadService';
+import { DownloadService, DownloadProgress as BasicDownloadProgress } from '@/lib/downloadService';
+import { ImprovedDownloadService, DownloadProgress as ImprovedDownloadProgress } from '@/lib/improvedDownloadService';
+import { RobustDownloadService, DownloadProgress as RobustDownloadProgress } from '@/lib/robustDownloadService';
+import { ResumeData } from './ResumeBuilder';
 import { SharingService } from '@/lib/sharingService';
 import { DownloadDebugPanel } from './DownloadDebugPanel';
+import { AdvancedDownloadDiagnostics } from './AdvancedDownloadDiagnostics';
+import { DownloadTestSuite } from './DownloadTestSuite';
 import { ManualDownloadFallback } from './ManualDownloadFallback';
 import { PreviewReadinessIndicator } from './PreviewReadinessIndicator';
 
 interface ExportOptionsProps {
   onExport?: (format: 'pdf' | 'word' | 'png') => void;
-  resumeData: any;
+  resumeData: ResumeData;
   resumeElementId?: string;
 }
 
@@ -46,26 +50,92 @@ export const ExportOptions: React.FC<ExportOptionsProps> = ({
   resumeData, 
   resumeElementId = 'resume-preview' 
 }) => {
-  const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<RobustDownloadProgress | null>(null);
+  const [progressTimeout, setProgressTimeout] = useState<NodeJS.Timeout | null>(null);
   const [isDownloading, setIsDownloading] = useState<string | null>(null);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
+  const [showAdvancedDiagnostics, setShowAdvancedDiagnostics] = useState(false);
+  const [showTestSuite, setShowTestSuite] = useState(false);
   const [failedDownloads, setFailedDownloads] = useState<Set<string>>(new Set());
   const [showManualFallback, setShowManualFallback] = useState<{format: 'pdf' | 'word' | 'png'} | null>(null);
   const { toast } = useToast();
   
-  // Use improved download service for better reliability
-  const downloadService = new ImprovedDownloadService((progress) => {
+  // Use robust download service for maximum reliability
+  const robustDownloadService = new RobustDownloadService((progress: RobustDownloadProgress) => {
     setDownloadProgress(progress);
+    
+    // Clear previous timeout and set new one to detect hanging
+    if (progressTimeout) clearTimeout(progressTimeout);
+    
+    // If progress hasn't changed in 30 seconds, consider it hung
+    const newTimeout = setTimeout(() => {
+      console.warn('⚠️ Download progress appears to be hanging...');
+      if (progress.stage !== 'complete' && progress.stage !== 'error') {
+        console.error('🚫 Progress timeout - forcing error state');
+        setDownloadProgress({
+          ...progress,
+          stage: 'error',
+          message: 'Download appears to be stuck. Please try again.'
+        });
+      }
+    }, 30000);
+    
+    setProgressTimeout(newTimeout);
   });
   
-  // Keep fallback to original service
-  const fallbackDownloadService = new DownloadService((progress) => {
-    setDownloadProgress(progress);
+  // Keep fallback services for progressive degradation
+  const improvedDownloadService = new ImprovedDownloadService((progress: ImprovedDownloadProgress) => {
+    const robustProgress = progress as RobustDownloadProgress;
+    setDownloadProgress(robustProgress);
+    
+    // Clear previous timeout and set new one
+    if (progressTimeout) clearTimeout(progressTimeout);
+    const newTimeout = setTimeout(() => {
+      console.warn('⚠️ Download progress appears to be hanging (improved service)...');
+      if (robustProgress.stage !== 'complete' && robustProgress.stage !== 'error') {
+        setDownloadProgress({
+          ...robustProgress,
+          stage: 'error',
+          message: 'Download appears to be stuck. Please try again.'
+        });
+      }
+    }, 30000);
+    setProgressTimeout(newTimeout);
+  });
+  
+  const basicDownloadService = new DownloadService((progress: BasicDownloadProgress) => {
+    const robustProgress = progress as RobustDownloadProgress;
+    setDownloadProgress(robustProgress);
+    
+    // Clear previous timeout and set new one
+    if (progressTimeout) clearTimeout(progressTimeout);
+    const newTimeout = setTimeout(() => {
+      console.warn('⚠️ Download progress appears to be hanging (basic service)...');
+      if (robustProgress.stage !== 'complete' && robustProgress.stage !== 'error') {
+        setDownloadProgress({
+          ...robustProgress,
+          stage: 'error',
+          message: 'Download appears to be stuck. Please try again.'
+        });
+      }
+    }, 30000);
+    setProgressTimeout(newTimeout);
   });
   
   const sharingService = new SharingService();
 
-  const handleDownload = async (format: 'pdf' | 'word' | 'png', useImproved = true) => {
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (progressTimeout) {
+        clearTimeout(progressTimeout);
+      }
+    };
+  }, [progressTimeout]);
+
+  const handleDownload = async (format: 'pdf' | 'word' | 'png') => {
+    console.log(`🚀 [DOWNLOAD START] Format: ${format}`);
+    
     try {
       setIsDownloading(format);
       setDownloadProgress(null);
@@ -83,32 +153,44 @@ export const ExportOptions: React.FC<ExportOptionsProps> = ({
         description: `Preparing your ${format.toUpperCase()} download...`,
       });
 
-      const service = useImproved ? downloadService : fallbackDownloadService;
+      // Use robust download service for direct downloads
+      const service = robustDownloadService;
       
-      await new Promise<void>(async (resolve, reject) => {
-        try {
-          switch (format) {
-            case 'pdf':
-              await service.downloadAsPDF(resumeData, resumeElementId || 'resume-preview-element');
-              break;
-            case 'word':
-              await service.downloadAsWord(resumeData);
-              break;
-            case 'png':
-              const fileName = `${(resumeData.personalInfo.fullName || 'Resume').replace(/\s+/g, '_')}_Resume.png`;
-              await service.downloadAsPNG(resumeElementId || 'resume-preview-element', fileName);
-              break;
-          }
-          resolve();
-        } catch (error) {
-          reject(error);
-        }
-      });
+      // Check if resume element exists before attempting download
+      const elementId = resumeElementId || 'resume-preview-element';
+      const resumeElement = document.getElementById(elementId) || 
+                          document.querySelector('[id*="resume-preview"]') ||
+                          document.querySelector('[class*="resume-preview"]') ||
+                          document.querySelector('[data-testid="resume-preview"]');
+                          
+      if (!resumeElement) {
+        throw new Error(`Resume element not found. Looking for: ${elementId}. Please ensure the resume preview is visible on the page.`);
+      }
+      
+      console.log(`✅ Found resume element:`, resumeElement);
+      
+      // Execute download based on format
+      switch (format) {
+        case 'pdf':
+          console.log(`📄 Downloading PDF using element: ${elementId}`);
+          await service.downloadAsPDF(resumeData, elementId);
+          break;
+        case 'word':
+          console.log('📝 Downloading Word document...');
+          await service.downloadAsWord(resumeData);
+          break;
+        case 'png':
+          console.log(`🖼️ Downloading PNG using element: ${elementId}`);
+          await service.downloadAsPNG(resumeData, elementId);
+          break;
+      }
+      
+      console.log(`✅ [SUCCESS] ${format} download completed successfully`);
 
-      // Show success toast with longer duration
+      // Success! Show success toast
       toast({
-        title: "Download Complete! 📄",
-        description: `Your resume has been successfully downloaded as ${format.toUpperCase()}. Check your downloads folder.`,
+        title: `Download Complete! 📄`,
+        description: `Your resume has been downloaded as ${format.toUpperCase()}. Check your downloads folder.`,
         duration: 5000,
       });
 
@@ -116,32 +198,37 @@ export const ExportOptions: React.FC<ExportOptionsProps> = ({
       onExport?.(format);
 
     } catch (error) {
-      console.error('Download error:', error);
+      console.error(`🚫 [ERROR] Download error:`, error);
+      
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      const isElementError = errorMessage.includes('not found') || errorMessage.includes('Element');
       
       // Mark as failed
       setFailedDownloads(prev => new Set(prev).add(format));
       
-      // Show detailed error toast with retry options
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      const isElementError = errorMessage.includes('not found') || errorMessage.includes('Element');
-      
+      const errorDescription = isElementError 
+        ? `Cannot locate resume content on page. Please ensure you're viewing the resume preview and try again.`
+        : `Download failed for ${format.toUpperCase()}: ${errorMessage}`;
+        
       toast({
         title: "Download Failed ❌",
-        description: isElementError 
-          ? `Cannot find resume on page. Please make sure you're on the preview step and try again.`
-          : `Failed to download ${format.toUpperCase()}: ${errorMessage}`,
+        description: errorDescription,
         variant: "destructive",
         duration: 10000,
       });
-
-      // If using improved service failed, don't auto-retry with fallback to avoid infinite loops
-      if (useImproved && isElementError) {
-        console.log('Improved download failed with element error - not attempting fallback to avoid loops');
-      }
-
+      
+      // Show manual fallback for failed downloads
+      setShowManualFallback({format: format as 'pdf' | 'word' | 'png'});
     } finally {
+      // Always clean up
       setIsDownloading(null);
       setDownloadProgress(null);
+      
+      // Clear progress timeout if exists
+      if (progressTimeout) {
+        clearTimeout(progressTimeout);
+        setProgressTimeout(null);
+      }
     }
   };
 
@@ -247,8 +334,15 @@ export const ExportOptions: React.FC<ExportOptionsProps> = ({
     "Consider having both PDF and Word versions ready"
   ];
 
+  // Debug: Log component render
+  console.log('🔧 [DEBUG] ExportOptions component rendering...', { resumeData, resumeElementId });
+  
   return (
     <div className="space-y-6">
+      {/* Debug indicator */}
+      <div className="bg-yellow-100 border-yellow-400 border rounded p-2 text-sm">
+        🔧 DEBUG: ExportOptions component loaded - Resume: {resumeData.personalInfo.fullName}
+      </div>
       <div className="text-center mb-6">
         <h2 className="text-3xl font-bold bg-gradient-primary bg-clip-text text-transparent mb-2">
           Export Your Resume
@@ -307,23 +401,45 @@ export const ExportOptions: React.FC<ExportOptionsProps> = ({
                     Estimated size: {format.size}
                   </div>
                   
-                  <Button 
-                    onClick={() => handleDownload(format.id as 'pdf' | 'word' | 'png')}
-                    className={`w-full gap-2 ${
-                      format.recommended 
-                        ? 'bg-gradient-primary hover:bg-primary-hover' 
-                        : ''
-                    }`}
-                    variant={format.recommended ? 'default' : 'outline'}
-                    disabled={isDownloading === format.id}
-                  >
-                    {isDownloading === format.id ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
+                  {isDownloading === format.id ? (
+                    <div className="space-y-2">
+                      <Button 
+                        onClick={() => {
+                          // Cancel download
+                          setIsDownloading(null);
+                          setDownloadProgress(null);
+                          if (progressTimeout) {
+                            clearTimeout(progressTimeout);
+                            setProgressTimeout(null);
+                          }
+                          toast({
+                            title: "Download Cancelled",
+                            description: "The download has been cancelled.",
+                            variant: "destructive"
+                          });
+                        }}
+                        className="w-full gap-2 bg-red-600 hover:bg-red-700"
+                        variant="destructive"
+                      >
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Cancel Download
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button 
+                      onClick={() => handleDownload(format.id as 'pdf' | 'word' | 'png')}
+                      className={`w-full gap-2 ${
+                        format.recommended 
+                          ? 'bg-gradient-primary hover:bg-primary-hover' 
+                          : ''
+                      }`}
+                      variant={format.recommended ? 'default' : 'outline'}
+                      disabled={isDownloading !== null}
+                    >
                       <Download className="h-4 w-4" />
-                    )}
-                    {isDownloading === format.id ? 'Downloading...' : `Download ${format.name}`}
-                  </Button>
+                      Download {format.name}
+                    </Button>
+                  )}
                   
                   {/* Progress indicator */}
                   {isDownloading === format.id && downloadProgress && (
@@ -336,6 +452,36 @@ export const ExportOptions: React.FC<ExportOptionsProps> = ({
                             {downloadProgress.attempt && downloadProgress.maxAttempts && 
                               ` (${downloadProgress.attempt}/${downloadProgress.maxAttempts})`
                             }
+                          </span>
+                        ) : downloadProgress.stage === 'detecting' ? (
+                          <span className="text-blue-600">
+                            🔍 {downloadProgress.message}
+                          </span>
+                        ) : downloadProgress.stage === 'loading' ? (
+                          <span className="text-purple-600">
+                            ⏳ {downloadProgress.message}
+                            {downloadProgress.substage && ` (${downloadProgress.substage})`}
+                          </span>
+                        ) : downloadProgress.stage === 'generating' ? (
+                          <span className="text-green-600">
+                            ⚡ {downloadProgress.message}
+                            {downloadProgress.substage && ` (${downloadProgress.substage})`}
+                          </span>
+                        ) : downloadProgress.stage === 'preparing' ? (
+                          <span className="text-blue-500">
+                            📋 {downloadProgress.message}
+                          </span>
+                        ) : downloadProgress.stage === 'downloading' ? (
+                          <span className="text-indigo-600">
+                            ⬇️ {downloadProgress.message}
+                          </span>
+                        ) : downloadProgress.stage === 'complete' ? (
+                          <span className="text-green-600">
+                            ✅ {downloadProgress.message}
+                          </span>
+                        ) : downloadProgress.stage === 'error' ? (
+                          <span className="text-red-600">
+                            ❌ {downloadProgress.message}
                           </span>
                         ) : (
                           downloadProgress.message
@@ -436,7 +582,6 @@ export const ExportOptions: React.FC<ExportOptionsProps> = ({
 
               <FacebookShareButton
                 url={shareableContent.url}
-                quote={shareableContent.description}
               >
                 <Button variant="outline" size="sm" className="gap-2">
                   <Facebook className="h-4 w-4 text-blue-700" />
@@ -493,12 +638,13 @@ export const ExportOptions: React.FC<ExportOptionsProps> = ({
               description: "Starting downloads for all formats...",
             });
 
+            // Download all formats sequentially with small delays
             for (const format of formats) {
               try {
                 await handleDownload(format);
                 successCount++;
-                // Small delay between downloads
-                await new Promise(resolve => setTimeout(resolve, 1000));
+                // Small delay between downloads to prevent browser blocking
+                await new Promise(resolve => setTimeout(resolve, 500));
               } catch (error) {
                 failureCount++;
                 console.error(`Failed to download ${format}:`, error);
@@ -543,17 +689,95 @@ export const ExportOptions: React.FC<ExportOptionsProps> = ({
       </div>
 
       {/* Debug Panel Toggle */}
-      <div className="text-center mt-8">
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          onClick={() => setShowDebugPanel(true)}
-          className="gap-2 text-muted-foreground hover:text-foreground"
-        >
-          <Bug className="h-4 w-4" />
-          Download not working? Click here for help
-        </Button>
+      <div className="text-center mt-8 space-y-2">
+        <div className="flex gap-2 justify-center flex-wrap">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => setShowAdvancedDiagnostics(true)}
+            className="gap-2 text-muted-foreground hover:text-foreground"
+          >
+            <Bug className="h-4 w-4" />
+            Run Diagnostics
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => setShowTestSuite(true)}
+            className="gap-2 text-muted-foreground hover:text-foreground"
+          >
+            <Download className="h-4 w-4" />
+            Test Downloads
+          </Button>
+        </div>
+        <div className="flex gap-2 flex-wrap justify-center">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => setShowDebugPanel(true)}
+            className="gap-1 text-xs text-muted-foreground/70 hover:text-muted-foreground"
+          >
+            Basic troubleshooting
+          </Button>
+          
+          {/* Emergency test download - bypass all complex logic */}
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={async () => {
+              console.log('🚨 [EMERGENCY] Starting emergency test download...');
+              try {
+                setIsDownloading('pdf');
+                const service = new RobustDownloadService((progress: RobustDownloadProgress) => {
+                  console.log('📊 [EMERGENCY PROGRESS]', progress);
+                  setDownloadProgress(progress);
+                });
+                
+                console.log('🚨 [EMERGENCY] Calling downloadAsPDF directly...');
+                await service.downloadAsPDF(resumeData, resumeElementId || 'resume-preview-element');
+                console.log('🚨 [EMERGENCY] Direct call completed!');
+                
+                toast({
+                  title: 'Emergency Test Complete',
+                  description: 'Direct download attempt finished - check console for details'
+                });
+              } catch (error) {
+                console.error('🚨 [EMERGENCY ERROR]', error);
+                toast({
+                  title: 'Emergency Test Failed',
+                  description: `Error: ${error instanceof Error ? error.message : String(error)}`,
+                  variant: 'destructive'
+                });
+              } finally {
+                setIsDownloading(null);
+                setDownloadProgress(null);
+              }
+            }}
+            className="gap-1 text-xs text-red-600/70 hover:text-red-600"
+          >
+            🚨 Emergency Test
+          </Button>
+        </div>
       </div>
+
+      {/* Advanced Diagnostics */}
+      <AdvancedDownloadDiagnostics
+        isVisible={showAdvancedDiagnostics}
+        onClose={() => setShowAdvancedDiagnostics(false)}
+        elementId={resumeElementId || 'resume-preview-element'}
+        onRetryDownload={(format) => {
+          setShowAdvancedDiagnostics(false);
+          handleDownload(format);
+        }}
+      />
+
+      {/* Test Suite */}
+      <DownloadTestSuite
+        isVisible={showTestSuite}
+        onClose={() => setShowTestSuite(false)}
+        resumeData={resumeData}
+        resumeElementId={resumeElementId || 'resume-preview-element'}
+      />
 
       {/* Debug Panel */}
       <DownloadDebugPanel 
